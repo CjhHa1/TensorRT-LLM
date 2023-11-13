@@ -192,6 +192,7 @@ protected:
     int32_t mMaxContextLength;
     bool mQKVBiasEnabled;
     bool mCrossAttention = false;
+    bool mSlidingWindow = true;
     int mMaxDistance = 0;
 
     // fmha runner (disable by default)

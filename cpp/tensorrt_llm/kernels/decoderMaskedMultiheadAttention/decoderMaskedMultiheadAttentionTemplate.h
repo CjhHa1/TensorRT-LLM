@@ -1243,6 +1243,7 @@ __global__ void masked_multihead_attention_kernel(
                 convert_from_float(&k, mul<Packed_Float_t, float>(k_scaling, float_from_int8(k_quant)));
             }
             else
+            /////////////////K的取值是否为这里
             {
                 k = vec_conversion<Qk_vec_k, Qk_vec_m>(*reinterpret_cast<const Qk_vec_m*>(&params.k[k_offset]));
             }
@@ -1282,6 +1283,7 @@ __global__ void masked_multihead_attention_kernel(
                 &params.ia3_key_weights[tensorrt_llm::common::flat_index2(ia3_ti_hi, qk_vec_idx, Dh)])));
     }
 
+    // 这里是rotary_embedding
     // Note we have no paddings in KV cache now.
     switch (params.position_embedding_type)
     {
@@ -1303,6 +1305,8 @@ __global__ void masked_multihead_attention_kernel(
         }
         break;
     }
+
+
     case PositionEmbeddingType::kROPE_GPT_NEOX:
     {
         const bool do_rotary = is_valid_qk_vec && QK_VEC_SIZE * tidx < params.rotary_embedding_dim;
@@ -1393,16 +1397,19 @@ __global__ void masked_multihead_attention_kernel(
             const int inBlockIdx = kvCacheBuffer.getKVLocalIdx(tlength, hi_kv, Dh, k_idx);
             // The base pointer for the value in the cache buffer.
             Tcache* k_cache = reinterpret_cast<Tcache*>(kvCacheBuffer.getKBlockPtr(bi, tlength));
-
+            //这里，从kv cache manager中取出key value pair
             if constexpr (ENABLE_8BITS_CACHE)
             {
                 store_8bits_kv_cache_vec(reinterpret_cast<Tcache*>(k_cache), k, inBlockIdx, kv_scale_orig_quant);
             }
             else
             {
+                // 将k存储到k_cache
                 *reinterpret_cast<Qk_vec_m*>(&k_cache[inBlockIdx]) = vec_conversion<Qk_vec_m, Qk_vec_k>(k);
             }
         }
+
+
 
         // Compute \sum_i Q[i] * K^T[i] for the current timestep.
 #ifdef MMHA_USE_FP32_ACUM_FOR_FMA
@@ -1411,6 +1418,7 @@ __global__ void masked_multihead_attention_kernel(
         using Qk_vec_acum = Qk_vec_k;
 #endif
         qk = dot<Qk_vec_acum, Qk_vec_k>(q, k);
+        // Q*K^T
         if (QK_VECS_PER_Dh_MAX <= WARP_SIZE)
         {
 #pragma unroll
@@ -1428,6 +1436,7 @@ __global__ void masked_multihead_attention_kernel(
     }
 
     // Store that value in shared memory. Keep the Q*K^T value in register for softmax.
+    //储存QK，缩放
     if (tidx == 0)
     {
         // Normalize qk.
@@ -1465,6 +1474,9 @@ __global__ void masked_multihead_attention_kernel(
     // Make sure the data is in shared memory.
     __syncthreads();
 
+///////////////////////////////
+
+
     constexpr unsigned K_ELTS_PER_CHUNK{THREADS_PER_KEY * K_VEC_SIZE};
 
     // The positions of the cache buffer (for this B * H) and the vector within that chunk associated with this
@@ -1475,7 +1487,8 @@ __global__ void masked_multihead_attention_kernel(
     constexpr unsigned K_VECS_PER_THREAD{Dh_MAX / K_ELTS_PER_CHUNK};
     static_assert(Dh_MAX == K_ELTS_PER_CHUNK * K_VECS_PER_THREAD);
 
-    // Load the Q values from shared memory. The values are reused during the loop on K.
+    // Load the Q values from shared memory. The values are reused during the loop on K
+    // 取出Q的值
     K_vec_k q_vec[K_VECS_PER_THREAD];
 #pragma unroll
     for (unsigned ii = 0; ii < K_VECS_PER_THREAD; ++ii)
@@ -1583,6 +1596,7 @@ __global__ void masked_multihead_attention_kernel(
             }
 
             // Store the product to shared memory. There's one qk value per timestep. Update the max.
+            // 这里是relative attention  --> 储存 qk_ 
             if (local_time_now < context_length && tidx % THREADS_PER_KEY == 0)
             {
                 if (params.relative_attention_bias != nullptr)
@@ -1680,7 +1694,7 @@ __global__ void masked_multihead_attention_kernel(
                 //
                 // WARNING: ALL THE THREADS OF A WARP MUST ENTER!!!
                 float qk_{Qk_dot<T, THREADS_PER_KEY>::dot(q_vec, k_vec) * params.inv_sqrt_dh};
-
+                // q_vec,k_vec 是Q@K的关键
                 // Store the product to shared memory. There's one qk value per timestep. Update the max.
                 if (time_now >= input_length && time_now < tlength && tidx % THREADS_PER_KEY == 0)
                 {
@@ -1825,7 +1839,7 @@ __global__ void masked_multihead_attention_kernel(
 
         if (!MULTI_BLOCK_FLAG)
         {
-            convert_from_float(&logits_smem[ti], qk_smem[ti] * inv_sum);
+            convert_from_float(&logits_smem[ti], qk_smem[ti] * inv_sum); 
         }
         else
         {
@@ -1840,7 +1854,7 @@ __global__ void masked_multihead_attention_kernel(
             }
         }
     }
-
+    // logits_current_smem是 Q@K^T/scale
     // Put Values part below so we leverage __syncthreads
     // from the previous step
 
@@ -1955,7 +1969,8 @@ __global__ void masked_multihead_attention_kernel(
                     out = fma(logit, cast_to_float(v_vec), out);
 #else  // MMHA_USE_FP32_ACUM_FOR_LOGITS
                     Tk logit = logits_smem[local_time_idx];
-                    out = fma(logit, v_vec, out);
+                    out = fma(logit, v_vec, out); 
+                    // qk * v
 #endif // MMHA_USE_FP32_ACUM_FOR_LOGITS
                 }
             }

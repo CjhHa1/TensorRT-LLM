@@ -27,7 +27,7 @@ auto constexpr kDefaultNamespace = "tensorrt_llm";
 class LoggerFinder : public nvinfer1::ILoggerFinder
 {
 public:
-    //! Set the logger finder.
+    //! Set the logger finde1r.
     void setLoggerFinder(nvinfer1::ILoggerFinder* finder);
 
     //! Get the logger.

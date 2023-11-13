@@ -44,7 +44,9 @@ def TRTBloom(args, config):
     num_layers = config['builder_config']['num_layers']
     use_gpt_attention_plugin = bool(
         config['plugin_config']['gpt_attention_plugin'])
-
+    
+    print('use_gpt_attention', use_gpt_attention_plugin)
+    
     model_config = tensorrt_llm.runtime.ModelConfig(
         vocab_size=vocab_size,
         num_layers=num_layers,
@@ -119,6 +121,7 @@ def main(args):
             config = json.load(f)
 
         tensorrt_llm_bloom = TRTBloom(args, config)
+        print('using tensor_llm')
 
     if test_hf:
         profiler.start('load HF model')
@@ -165,13 +168,15 @@ def main(args):
 
         sampling_config = tensorrt_llm.runtime.SamplingConfig(
             end_id=end_id, pad_id=pad_id, top_k=top_k, num_beams=num_beams)
-
+        print('ready to set up')
+        
         with torch.no_grad():
             tensorrt_llm_bloom.setup(line_encoded.size(0),
                                      max_context_length=line_encoded.size(1),
                                      max_new_tokens=output_len,
                                      beam_width=num_beams)
-
+            print('line encoded',line_encoded.shape)
+            print('input_lengths',input_lengths.shape)
             output_ids = tensorrt_llm_bloom.decode(
                 line_encoded,
                 input_lengths,

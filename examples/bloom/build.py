@@ -412,6 +412,10 @@ def build_rank_engine(builder: Builder,
             dtype=args.dtype)
     if args.world_size > 1:
         network.plugin_config.set_nccl_plugin(args.dtype)
+    
+    network.plugin_config.set_window_attention()
+
+    print('start window attention',network.plugin_config.window_attention)
     with net_guard(network):
         # Prepare
         network.set_named_parameters(tensorrt_llm_bloom.named_parameters())
@@ -436,6 +440,8 @@ def build_rank_engine(builder: Builder,
     tensorrt_llm.graph_rewriting.optimize(network)
 
     engine = None
+    print('------------------------------------')
+    print(network.trt_network)
 
     # Network -> Engine
     engine = builder.build_engine(network, builder_config)
@@ -484,6 +490,7 @@ def build(rank, args):
                                       cur_rank)
         engine = build_rank_engine(builder, builder_config, engine_name,
                                    cur_rank, args)
+        
         assert engine is not None, f'Failed to build engine for rank {cur_rank}'
 
         if cur_rank == 0:

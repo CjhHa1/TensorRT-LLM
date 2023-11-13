@@ -292,6 +292,11 @@ int GPTAttentionPlugin::enqueueSome(int32_t seqIdxBeg, int32_t localNbSeq, int32
             = static_cast<std::byte*>(outputs[1]) + cacheElemSize * getStride(outputDesc[1].dims, 0) * seqIdxBeg;
     }
 
+    // if (mSlindingWindow)
+    // {
+    //     key_value_cache =
+    // }
+
     const T* alibi_slopes = isALiBi() ? static_cast<const T*>(inputs[getAlibiSlopesIdx()]) : nullptr;
 
     if (is_context) // context stage

@@ -780,7 +780,7 @@ class GenerationSession(object):
         self.max_seq_length = max_context_length + max_new_tokens
         self.beam_width = beam_width
         self.encoder_max_input_length = encoder_max_input_length
-
+    
         self.buffer = {}
         if self.mapping.is_last_pp_rank():
             self.buffer['logits'] = torch.empty(
@@ -794,7 +794,7 @@ class GenerationSession(object):
                 (encoder_max_input_length, ),
                 dtype=self._tensor_dtype('encoder_max_input_length'),
                 device=self.device)
-
+    
         if self.paged_kv_cache:
             blocks = batch_size * beam_width * math.ceil(
                 self.max_seq_length / self.tokens_per_block)
@@ -844,6 +844,7 @@ class GenerationSession(object):
             # one for inputs, and the other for outputs.
             # They will take turns to act as input and output buffers.
             # Not applicable to cross KV buffers as it's constant
+            print('two set of kv cache')
             for i in range(self.first_layer, self.last_layer):
                 self.buffer[f'1_present_key_value_{i}'] = torch.empty(
                     cache_shape,
@@ -1654,7 +1655,7 @@ class GenerationSession(object):
             if self.gather_all_token_logits:
                 outputs['context_logits'] = context_logits
             return outputs
-
+        print(self.max_new_tokens)
         for step in range(0, self.max_new_tokens):
             should_stop, next_step_buffer, tasks, context_lengths, host_context_lengths, attention_mask, logits = self.handle_per_step(
                 cache_indirections, step, batch_size, max_context_length,
@@ -1665,6 +1666,7 @@ class GenerationSession(object):
                 sequence_lengths, next_step_buffer, stop_words_list,
                 bad_words_list, no_repeat_ngram_size, encoder_output,
                 encoder_input_lengths)
+            print(next_step_buffer['past_key_value_0'].shape)
             if step == 0:
                 context_logits = logits
             if should_stop is not None and should_stop.item():

@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import math
+import torch
 from typing import List, Optional
 
 import numpy as np
@@ -23,7 +24,7 @@ from ..functional import (AttentionMaskType, PositionEmbeddingType,
                           RotaryScalingType, Tensor, bert_attention, cast, clip,
                           concat, constant, expand_mask, generate_alibi_biases,
                           generate_alibi_slopes, gpt_attention, matmul, round,
-                          shape, slice, softmax, split)
+                          shape, slice, softmax, split, window_attention)
 from ..module import Module
 from ..parameter import Parameter
 from ..quantization import QuantMode
@@ -251,7 +252,7 @@ class Attention(Module):
             self.rel_attn_table = Parameter(shape=(num_attention_heads //
                                                    tp_size, num_buckets),
                                             dtype=dtype)
-
+            
     def forward(
         self,
         hidden_states: Tensor,
@@ -262,7 +263,6 @@ class Attention(Module):
         encoder_output: Optional[Tensor] = None,
         workspace=None,
     ):
-
         assert isinstance(hidden_states, Tensor)
 
         alibi_slopes = None
@@ -296,6 +296,15 @@ class Attention(Module):
         )
         if self.cross_attention and (past_key_value is not None):
             past_key_value = kv_cache_params.past_key_value[1]
+        
+        print('past key value shape',past_key_value.shape)
+        if default_net().plugin_config.window_attention:
+            window_size = 10 
+            print('in window attention')
+            past_key_value = window_attention(past_key_value,window_size)
+            print('output_past_key_value',past_key_value.shape)
+        else:
+            print('did not get in window attention')
 
         # if cross attention, cross QKV only needs to be calculated once in the
         # 1st decoding step --> write to cross KV cache --> remains constant
@@ -303,6 +312,7 @@ class Attention(Module):
         # whether past_key_value exists or not
         # also, cross KV cache max length is set from encoder output seqlen,
         # this maps to the max context length concept in decoder-only models
+        
         cross_qkv = None
         # get length data in every run
         if encoder_output:
@@ -319,6 +329,7 @@ class Attention(Module):
             ) else None
             kv_quant_orig_scale = self.kv_quant_orig_scale.value if self.quant_mode.has_kv_cache_quant(
             ) else None
+
             context, past_key_value = gpt_attention(
                 tensor=qkv,
                 past_key_value=past_key_value,
@@ -360,6 +371,7 @@ class Attention(Module):
             )
 
         else:
+            print('not in gpt attention')
             # plain TensorRT mode
             assert paged_kv_cache == False
 
@@ -380,7 +392,6 @@ class Attention(Module):
             kv_size = self.attention_head_size * self.num_attention_kv_heads
             query, key, value = split(qkv, [self.hidden_size, kv_size, kv_size],
                                       dim=2)
-
             # in cross attention mode, replace kv by encoder_output
             if self.cross_attention and encoder_output is not None:
                 encoder_qkv = self.qkv(encoder_output)
@@ -391,9 +402,9 @@ class Attention(Module):
             query = transpose_for_scores(query)
             key = transpose_for_scores(key, is_kv=True)
             value = transpose_for_scores(value, is_kv=True)
-
+            print('key shape',key.shape)
             if past_key_value is not None:
-
+                print('is not none')
                 def dequantize_tensor(x, scale):
                     # Cast from int8 to dtype
                     casted_x = cast(x, self.dtype)
@@ -405,7 +416,7 @@ class Attention(Module):
 
                 # past_key_value [bs, 2, num_heads, max_seq_len, head_dim]
                 past_key, past_value = split(past_key_value, 1, dim=1)
-
+                print('past key shape',past_key.shape)
                 key_shape = concat([
                     shape(past_key, 0),
                     shape(past_key, 2),
@@ -418,7 +429,7 @@ class Attention(Module):
 
                 key = concat([past_key, key], dim=2).cast(self.dtype)
                 value = concat([past_value, value], dim=2).cast(self.dtype)
-
+            
             if use_cache:
                 key_inflated_shape = concat([
                     shape(key, 0), 1,
@@ -426,12 +437,15 @@ class Attention(Module):
                     shape(key, 2),
                     shape(key, 3)
                 ])
+                print(shape(key,0))
+                print('using cache',key_inflated_shape.shape)
+
                 inflated_key = key.view(key_inflated_shape,
                                         zero_is_placeholder=False)
                 inflated_value = value.view(key_inflated_shape,
                                             zero_is_placeholder=False)
                 past_key_value = concat([inflated_key, inflated_value], dim=1)
-
+                print(past_key_value.shape)
                 if self.use_int8_kv_cache:
 
                     def quantize_tensor(x, scale):
@@ -467,6 +481,7 @@ class Attention(Module):
                 mask_buf = np.zeros_like(select_buf, np.float32)
                 mask_buf[select_buf] = float('-inf')
                 buffer = constant(mask_buf)
+                print('in causal mask')
                 causal_mask = slice(buffer, starts, sizes)
 
             if attention_mask is not None:
@@ -497,7 +512,7 @@ class Attention(Module):
                         shape(context, 1), self.hidden_size]))
 
         context = self.dense(context, workspace)
-
+        print(past_key_value.shape)
         if use_cache:
             return (context, past_key_value)
         else:

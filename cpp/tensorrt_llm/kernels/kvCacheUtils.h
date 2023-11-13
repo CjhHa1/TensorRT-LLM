@@ -169,5 +169,66 @@ struct KVLinearBuffer
     }
 };
 
+// struct KVLinearWindowBuffer
+// {
+//     // Struct operates on contiguous kv cache providing
+//     // functions for accessing specific elements in K and V caches
+
+//     // Current number of sequences
+//     int32_t mMaxSeqs;
+//     // Max sequence length
+//     int32_t mWindowSize;
+//     // Bytes per sequence (H*D*M_S*sizeof(DataType))
+//     int32_t mBytesPerSeq;
+//     // Pointer to the of K/V cache data
+//     // Shape [B, 2, S*H*D], where 2 is for K and V,
+//     // B is current number of sequences and
+//     // H is number of heads
+//     // S is maximum sequence length
+//     // D is dimension per head
+//     // K shape is [B, 1, H, S, D]
+//     // V shape is [B, 1, H, S, D]
+//     // NOTE: we have remapped K layout as the same of V.
+//     int8_t* data;
+
+//     KVLinearWindowBuffer() {}
+
+//     KVLinearWindowBuffer(int32_t batchSize, int32_t maxBlocksPerSeq, int32_t tokensPerBlock, int32_t sizePerToken)
+//         : mMaxSeqs(batchSize)
+//         , mWindowSize(tokensPerBlock)
+//         , mBytesPerSeq(tokensPerBlock * sizePerToken)
+//     {
+//     }
+
+//     __host__ __device__ inline void** getRowPtr(KVIdxType kvIdx, int32_t seqIdx)
+//     {
+//         return reinterpret_cast<void**>(data + seqIdx * mBytesPerSeq * 2 + static_cast<int32_t>(kvIdx) *
+//         mBytesPerSeq);
+//     }
+
+//     __host__ __device__ inline void* getBlockPtr(void** pointer, int32_t tokenIdx)
+//     {
+//         return reinterpret_cast<void*>(pointer);
+//     }
+
+//     __host__ __device__ inline void* getKBlockPtr(int32_t seqIdx, int32_t /*tokenIdx*/)
+//     {
+//         return reinterpret_cast<void*>(getRowPtr(KVIdxType::K_IDX, seqIdx));
+//     }
+
+//     __host__ __device__ inline void* getVBlockPtr(int32_t seqIdx, int32_t /*tokenIdx*/)
+//     {
+//         return reinterpret_cast<void*>(getRowPtr(KVIdxType::V_IDX, seqIdx));
+//     }
+
+//     __host__ __device__ inline int32_t getKVLocalIdx(
+//         int32_t tokenIdx, int32_t headIdx, int32_t dimsPerHead, int32_t channelIdx)
+//     {
+//         return headIdx * mMaxSeqLen * dimsPerHead + tokenIdx * dimsPerHead + channelIdx;
+//     }
+
+//     __host__ __device__ inline void
+// };
+
 } // namespace kernels
 } // namespace tensorrt_llm

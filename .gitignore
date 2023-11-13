@@ -18,7 +18,12 @@ venv/
 .hypothesis/
 .idea/
 cpp/cmake-build-*
+/build/*.whl
+/dist/*.egg
+
 
 # Testing
 .coverage.*
 results_trt/
+
+

@@ -39,13 +39,12 @@
 #include "tensorrt_llm/plugins/smoothQuantGemmPlugin/smoothQuantGemmPlugin.h"
 #include "tensorrt_llm/plugins/weightOnlyGroupwiseQuantMatmulPlugin/weightOnlyGroupwiseQuantMatmulPlugin.h"
 #include "tensorrt_llm/plugins/weightOnlyQuantMatmulPlugin/weightOnlyQuantMatmulPlugin.h"
+#include "tensorrt_llm/plugins/windowAttentionPlugin/windowAttention.h"
 
-#include <array>
 #include <cstdlib>
 
-#include <NvInferRuntime.h>
-
 namespace tc = tensorrt_llm::common;
+#include <NvInferRuntime.h>
 
 namespace
 {
@@ -151,6 +150,7 @@ extern "C"
             weightOnlyGroupwiseQuantMatmulPluginCreator;
         static tensorrt_llm::plugins::WeightOnlyQuantMatmulPluginCreator weightOnlyQuantMatmulPluginCreator;
         static tensorrt_llm::plugins::LookupPluginCreator lookupPluginCreator;
+        static tensorrt_llm::plugins::RecentCachePluginCreator recentCachePluginCreator;
 
         static std::array pluginCreators
             = { creatorPtr(identityPluginCreator),
@@ -173,6 +173,7 @@ extern "C"
                   creatorPtr(weightOnlyGroupwiseQuantMatmulPluginCreator),
                   creatorPtr(weightOnlyQuantMatmulPluginCreator),
                   creatorPtr(lookupPluginCreator),
+                  creatorPtr(recentCachePluginCreator),
               };
         nbCreators = pluginCreators.size();
         return pluginCreators.data();

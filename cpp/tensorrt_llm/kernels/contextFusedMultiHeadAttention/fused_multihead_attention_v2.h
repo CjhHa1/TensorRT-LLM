@@ -235,6 +235,7 @@ public:
             kernelMeta.mFP32Accumulation, kernelMeta.mFlashAttention, kernelMeta.mAttentionMaskType, kernelMeta.mTiled);
     }
 
+    // 入口：
     virtual void run(
         Fused_multihead_attention_params_v2& params, Launch_params& launch_params, cudaStream_t stream) const
     {

@@ -98,7 +98,8 @@ public:
     }
 
     ~mhaImpl() {}
-
+    
+    // need to change this 
     void setup(const int b, const int s, const int total_seqlen, const bool has_alibi, const bool scale_alibi,
         const int tp_size, const int tp_rank)
     {

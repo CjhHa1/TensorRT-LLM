@@ -1020,6 +1020,8 @@ def slice(input: Tensor, starts: Union[Tensor, Sequence[int]],
     if isinstance(sizes, Tensor):
         trt_sizes = [1 for _ in range(input_ndim)]  # unused dummy value
 
+    print('trt_sizes',trt_sizes)
+    print('trt_starts',trt_starts)
     layer = default_trtnet().add_slice(input.trt_tensor,
                                        start=trt_starts,
                                        shape=trt_sizes,
@@ -3073,10 +3075,10 @@ def gpt_attention(
 
         past_key_value: Tensor
             The tensor that stores KV cache data. Its shape is
-            [max_batch_size * max_beam_width, 2, num_heads, max_seqlen, hidden_dim_per_head]
-            in contiguous mode and
-            [max_blocks, 2, num_heads, num_tokens_per_block, hidden_dim_per_head]
-            in paged mode. See KV Cache in docs/gpt_attention.md,
+            [max_batch_size * max_beam_width, 2, num_heads, max_seqlen, hidden_dim_per_head] in contiguous mode
+            and
+            [max_blocks, 2, num_heads, num_tokens_per_block, hidden_dim_per_head] in paged mode.
+            See KV Cache in docs/gpt_attention.md,
 
         sequence_lengths: Tensor
             The tensor that stores the length of each sequence. Its shape is
@@ -3335,7 +3337,7 @@ def gpt_attention(
         cache_indirection,
         host_request_types,
     ]
-
+    
     if paged_kv_cache_flag:
         plug_inputs += [kv_cache_block_pointers]
     else:
@@ -3814,3 +3816,53 @@ def non_gated_version(activation):
     if is_gated_activation(activation):
         return GATED_ACT_2_ACT[activation]
     return activation
+
+
+def window_attention(past_key_value: Tensor,
+            window_size: int=2000) -> Tensor:
+    '''
+    Simple window attention implemention that slice original key/value cache to fixed size.
+
+    Parameters:
+        past_key_value: Tensor
+        [max_batch_size * max_beam_width, 2, num_heads, max_seqlen, hidden_dim_per_head] in contiguous mode.
+        [max_blocks, 2, num_heads, num_tokens_per_block, hidden_dim_per_head] in paged mode.
+
+        window_size : int
+
+    Returns:
+        n_past_key_value: Tensor
+        [max_batch_size * max_beam_width, 2, num_heads, window_size, hidden_dim_per_head] in contiguous mode.
+        The output tensor of that operation.
+    '''
+    if not default_net().plugin_config.window_attention:
+        seq_len = past_key_value.shape[3]
+        if seq_len <= window_size:
+            return past_key_value
+        return past_key_value[:,:,:,seq_len-window_size:seq_len,:]
+    
+    else:
+        # plg_creator = trt.get_plugin_registry().get_plugin_creator(
+        #     'RecentCache', '1', TRT_LLM_PLUGIN_NAMESPACE)
+        # assert plg_creator is not None
+        # r_window_size = window_size
+        # window_size = trt.PluginField("window_size", np.array(window_size, dtype=np.int32),
+        #                       trt.PluginFieldType.INT32)
+        # p_dtype = 'float32'
+        # pf_type = trt.PluginField(
+        #     "type_id", np.array([int(str_dtype_to_trt(p_dtype))], np.int32),
+        #     trt.PluginFieldType.INT32)
+
+        # pfc = trt.PluginFieldCollection([window_size, pf_type])
+        # window_attn_plug = plg_creator.create_plugin("window_attn", pfc)
+
+        # window_kv_shape = past_key_value.shape[:3]+(r_window_size,)+past_key_value.shape[4:]
+        seq_len = past_key_value.shape[3]
+        starts = [0,0,0,seq_len-window_size,0]
+        sizes = past_key_value.shape[:3]+(window_size,)+past_key_value.shape[4:]
+             
+        # plug_inputs = [past_key_value.trt_tensor]
+        # layer = default_trtnet().add_plugin_v2(plug_inputs, window_attn_plug)
+        
+        # return _create_tensor(layer.get_output(0), layer)
+        return slice(past_key_value, starts, sizes)
